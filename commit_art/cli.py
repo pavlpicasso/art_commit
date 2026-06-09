@@ -9,6 +9,7 @@ from commit_art.doctor import format_doctor_checks, has_errors, run_doctor
 from commit_art.git_runner import GitApplyError, GitPushError, apply_plan, inspect_repo, push_repo, push_repo_in_chunks
 from commit_art.github_helper import GitHubCreateError, create_github_repository
 from commit_art.generator import generate_plan, summarize_plan
+from commit_art.image_renderer import ImageRenderError, render_image_map
 from commit_art.map_parser import CommitMapError, validate_commit_map
 from commit_art.preview_renderer import render_visual_map
 from commit_art.script_writer import build_bash_script, build_powershell_script, write_script
@@ -109,6 +110,12 @@ def build_parser() -> argparse.ArgumentParser:
     text.add_argument("--level", default="#", help="Configured intensity symbol to use for filled pixels.")
     text.add_argument("--letter-spacing", type=int, default=1, help="Blank columns between characters.")
     text.add_argument("--align", choices=("left", "center", "right"), default="center")
+
+    image = subparsers.add_parser("image", help="Convert an image into a 7x52 contribution map.")
+    image.add_argument("path", type=Path, help="Path to an image file supported by Pillow.")
+    image.add_argument("--mode", choices=("stretch", "contain", "cover"), default="contain")
+    image.add_argument("--invert", action="store_true", help="Use bright pixels as higher contribution levels.")
+    image.add_argument("--preview", action="store_true", help="Also render a plain terminal preview.")
 
     github_create = subparsers.add_parser("github-create", help="Create a GitHub repository with gh CLI.")
     github_create.add_argument("name", help="Repository name, for example owner/repo or repo.")
@@ -223,6 +230,20 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         print(format_toml_map(commit_map))
+        return 0
+
+    if args.command == "image":
+        try:
+            commit_map = render_image_map(args.path, config.levels, mode=args.mode, invert=args.invert)
+            validate_commit_map(commit_map, config.levels)
+        except (ImageRenderError, CommitMapError) as error:
+            print(f"Error: {error}")
+            return 1
+
+        print(format_toml_map(commit_map))
+        if args.preview:
+            print("")
+            print(render_visual_map(commit_map, config.levels, color=False))
         return 0
 
     if args.command == "github-create":

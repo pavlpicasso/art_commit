@@ -1,5 +1,5 @@
-origin = "https://github.com/pavlpicasso/commits_art"
-branch = "master"
+origin = "https://github.com/pavlpicasso/art"
+branch = "main"
 repo_dir = "repo"
 commit_file = "commit_art.md"
 timezone = "+0300"
@@ -9,13 +9,13 @@ author_name = "pavlpicasso"
 author_email = "pavlpicasso@gmail.com"
 
 map = [
-  "           #   #  ###  ####  #     ####             ",
-  "           #   # #   # #   # #     #   #            ",
-  "           #   # #   # #   # #     #   #            ",
-  "           # # # #   # ####  #     #   #            ",
-  "           # # # #   # # #   #     #   #            ",
-  "           ## ## #   # #  #  #     #   #            ",
-  "           #   #  ###  #   # ##### ####             ",
+  "           #   # ##### #     #      ###             ",
+  "           #   # #     #     #     #   #            ",
+  "           #   # #     #     #     #   #            ",
+  "           ##### ####  #     #     #   #            ",
+  "           #   # #     #     #     #   #            ",
+  "           #   # #     #     #     #   #            ",
+  "           #   # ##### ##### #####  ###             ",
 ]
 
 [levels]

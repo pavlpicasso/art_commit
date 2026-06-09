@@ -20,6 +20,7 @@ from commit_art.git_runner import (
 )
 from commit_art.github_helper import GitHubCreateError, _build_github_create_args
 from commit_art.generator import generate_plan, summarize_plan
+from commit_art.image_renderer import ImageRenderError, image_to_map
 from commit_art.map_parser import CommitMapError, validate_commit_map
 from commit_art.preview_renderer import render_visual_map
 from commit_art.text_renderer import TextRenderError, format_toml_map, render_text_map
@@ -295,6 +296,47 @@ class GeneratorTest(unittest.TestCase):
         checks = run_doctor(CommitArtConfig(repo_dir=Path("missing-doctor-repo")), year=2024)
 
         self.assertIn("[", format_doctor_checks(checks))
+
+    def test_image_to_map_returns_7_by_52_map(self) -> None:
+        from PIL import Image
+
+        image = Image.new("L", (52, 7), 255)
+        image.putpixel((0, 0), 0)
+
+        commit_map = image_to_map(image, DEFAULT_LEVELS, mode="stretch")
+
+        self.assertEqual(len(commit_map), 7)
+        self.assertTrue(all(len(row) == 52 for row in commit_map))
+        self.assertEqual(commit_map[0][0], "#")
+        self.assertEqual(commit_map[0][1], " ")
+
+    def test_image_to_map_invert_uses_bright_pixels(self) -> None:
+        from PIL import Image
+
+        image = Image.new("L", (52, 7), 0)
+        image.putpixel((0, 0), 255)
+
+        commit_map = image_to_map(image, DEFAULT_LEVELS, mode="stretch", invert=True)
+
+        self.assertEqual(commit_map[0][0], "#")
+        self.assertEqual(commit_map[0][1], " ")
+
+    def test_image_to_map_rejects_invalid_mode(self) -> None:
+        from PIL import Image
+
+        with self.assertRaises(ImageRenderError):
+            image_to_map(Image.new("L", (1, 1), 255), DEFAULT_LEVELS, mode="tile")
+
+    def test_image_to_map_supports_contain_and_cover(self) -> None:
+        from PIL import Image
+
+        image = Image.new("L", (10, 10), 0)
+
+        contain_map = image_to_map(image, DEFAULT_LEVELS, mode="contain")
+        cover_map = image_to_map(image, DEFAULT_LEVELS, mode="cover")
+
+        self.assertEqual(len(contain_map), 7)
+        self.assertEqual(len(cover_map), 7)
 
 
 if __name__ == "__main__":

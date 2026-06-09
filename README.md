@@ -15,6 +15,8 @@ python main.py preview --visual
 python main.py preview --visual --no-color
 python main.py preview --year 2024
 python main.py text "HELLO"
+python main.py image logo.png
+python main.py image logo.png --mode cover --preview
 python main.py repo-status
 python main.py apply --year 2024
 python main.py apply --year 2024 --reset-repo
@@ -59,6 +61,20 @@ The `text` command renders text into a 7 by 52 map that can be pasted into `conf
 python main.py text "HELLO" --level "#"
 python main.py text "2024" --level "*" --align left
 ```
+
+The `image` command converts an image into a 7 by 52 map using Pillow. Dark pixels become higher contribution levels by default. Use `--invert` for light artwork on a dark background:
+
+```bash
+python main.py image logo.png
+python main.py image logo.png --mode stretch
+python main.py image logo.png --mode cover --invert --preview
+```
+
+Image modes:
+
+- `contain` preserves aspect ratio and pads with empty cells.
+- `cover` preserves aspect ratio and crops to fill the contribution grid.
+- `stretch` resizes directly to 52 by 7.
 
 The `github-create` command wraps GitHub CLI `gh repo create`. By default it creates a private repository and attaches `repo_dir` as `--source` with remote `origin`:
 
@@ -109,6 +125,7 @@ Implemented:
 - external `config.toml`;
 - 5 GitHub-style contribution levels;
 - text-to-map generator;
+- image-to-map importer;
 - commit plan preview;
 - visual terminal preview;
 - GitHub contribution compatibility checks with `doctor`;
@@ -118,6 +135,7 @@ Implemented:
 - push workflow with dirty checks and `--force-with-lease`.
 - GitHub repository creation helper through `gh`.
 
-Next:
+Dependencies:
 
-- image-to-map importer.
+- Python 3.11+
+- Pillow for image import
