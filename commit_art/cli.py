@@ -5,6 +5,7 @@ from datetime import date
 from pathlib import Path
 
 from commit_art.config import ConfigError, load_config
+from commit_art.doctor import format_doctor_checks, has_errors, run_doctor
 from commit_art.git_runner import GitApplyError, GitPushError, apply_plan, inspect_repo, push_repo, push_repo_in_chunks
 from commit_art.github_helper import GitHubCreateError, create_github_repository
 from commit_art.generator import generate_plan, summarize_plan
@@ -119,6 +120,15 @@ def build_parser() -> argparse.ArgumentParser:
     github_create.add_argument("--no-source", action="store_true", help="Do not attach config repo_dir as gh --source.")
     github_create.add_argument("--remote", default="origin", help="Remote name to set when using --source.")
     github_create.add_argument("--push", action="store_true", help="Ask gh to push the source repository after creation.")
+
+    doctor = subparsers.add_parser("doctor", help="Check GitHub contribution compatibility prerequisites.")
+    doctor.add_argument("--today", default=argparse.SUPPRESS, help="Use a fixed current date in YYYY-MM-DD format.")
+    doctor.add_argument(
+        "--year",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="Check the contribution map for the 52-week grid containing January 1 of this year.",
+    )
 
     return parser
 
@@ -240,6 +250,18 @@ def main(argv: list[str] | None = None) -> int:
         if output:
             print(output)
         return 0
+
+    if args.command == "doctor":
+        try:
+            today = parse_today(getattr(args, "today", None))
+            year = parse_year(getattr(args, "year", None))
+            checks = run_doctor(config, today=today, year=year)
+        except ValueError as error:
+            print(f"Error: {error}")
+            return 1
+
+        print(format_doctor_checks(checks))
+        return 1 if has_errors(checks) else 0
 
     try:
         today = parse_today(getattr(args, "today", None))

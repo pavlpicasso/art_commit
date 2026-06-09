@@ -8,6 +8,8 @@ The project converts a 7 by 52 text map into dated commits. Rows are weekdays fr
 
 ```bash
 python main.py validate
+python main.py doctor
+python main.py doctor --year 2024
 python main.py preview
 python main.py preview --visual
 python main.py preview --visual --no-color
@@ -30,6 +32,8 @@ python -m unittest discover -s tests
 The generated script creates local commits in the current repository directory. It does not run `git push --force` automatically.
 
 The `repo-status` command inspects the configured `repo_dir` before commits are created.
+
+The `doctor` command checks local GitHub contribution compatibility prerequisites: git/gh availability, config placeholders, map validity, `repo_dir`, branch, origin, dirty state, author email, and local commit count. It does not call GitHub APIs.
 
 The `preview --visual` command renders the configured map as a 7 by 52 contribution graph in the terminal. Use `--no-color` for a plain text version.
 
@@ -107,6 +111,7 @@ Implemented:
 - text-to-map generator;
 - commit plan preview;
 - visual terminal preview;
+- GitHub contribution compatibility checks with `doctor`;
 - bash and PowerShell script generation.
 - direct local commit creation with `apply`.
 - safe repo workflow with `repo-status`, path guards, dirty checks, and `--reset-repo`.
