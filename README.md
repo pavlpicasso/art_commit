@@ -2,94 +2,73 @@
 
 Python GitHub contribution art generator.
 
-The project converts a 7 by 52 text map into dated commits. Rows are weekdays from Sunday to Saturday, columns are weeks. A space means no commits. The default intensity levels are `.`, `:`, `*`, and `#`.
+The project converts a 7 by 52 map into dated git commits. Rows are weekdays from Sunday to Saturday, columns are weeks. A space means no commits. The default non-empty intensity levels are `.`, `:`, `*`, and `#`.
 
-## Commands
+## Quick Start
 
-```bash
-python main.py validate
-python main.py doctor
-python main.py doctor --year 2024
-python main.py preview
-python main.py preview --visual
-python main.py preview --visual --no-color
-python main.py preview --year 2024
-python main.py text "HELLO"
-python main.py image logo.png
-python main.py image logo.png --mode cover --preview
-python main.py repo-status
-python main.py apply --year 2024
-python main.py apply --year 2024 --reset-repo
-python main.py push
-python main.py push --force
-python main.py push --chunk-size 500
-python main.py push --chunk-size 500 --chunk-delay 90
-python main.py github-create my-commit-art --private
-python main.py github-create owner/my-commit-art --public --description "Contribution art"
-python main.py generate-script --shell powershell
-python main.py generate-script --shell bash
-python -m unittest discover -s tests
-```
-
-The generated script creates local commits in the current repository directory. It does not run `git push --force` automatically.
-
-The `repo-status` command inspects the configured `repo_dir` before commits are created.
-
-The `doctor` command checks local GitHub contribution compatibility prerequisites: git/gh availability, config placeholders, map validity, `repo_dir`, branch, origin, dirty state, author email, and local commit count. It does not call GitHub APIs.
-
-The `preview --visual` command renders the configured map as a 7 by 52 contribution graph in the terminal. Use `--no-color` for a plain text version.
-
-The `apply` command creates commits directly in `repo_dir`. It creates the directory when it is missing, refuses to work in the project root, refuses paths outside the current workspace, and never pushes.
-
-Existing repository options:
-
-- `--allow-existing` appends commits to an existing git repository.
-- `--allow-dirty` permits appending when that repository has uncommitted changes.
-- `--reset-repo` deletes and recreates `repo_dir` before creating commits.
-
-The `push` command pushes `repo_dir` to the configured `origin` and `branch`. It refuses to push a dirty repository unless `--allow-dirty` is passed. `--force` uses `--force-with-lease`.
-
-Use `--chunk-size` to publish history progressively in smaller force-pushed batches. This can help GitHub process very large generated histories:
+1. Install dependencies:
 
 ```bash
-python main.py push --chunk-size 500 --chunk-delay 90
+python -m pip install -e .
 ```
 
-The `text` command renders text into a 7 by 52 map that can be pasted into `config.toml`:
+2. Edit `config.toml`:
+
+```toml
+origin = "https://github.com/your-name/commit-art.git"
+branch = "master"
+author_name = "Your Name"
+author_email = "your_verified_github_email@example.com"
+```
+
+3. Generate a map from text:
 
 ```bash
 python main.py text "HELLO" --level "#"
-python main.py text "2024" --level "*" --align left
 ```
 
-The `image` command converts an image into a 7 by 52 map using Pillow. Dark pixels become higher contribution levels by default. Use `--invert` for light artwork on a dark background:
+Copy the printed `map = [...]` block into `config.toml`.
+
+4. Preview the result:
 
 ```bash
-python main.py image logo.png
-python main.py image logo.png --mode stretch
-python main.py image logo.png --mode cover --invert --preview
+python main.py preview --year 2024 --visual --no-color
 ```
 
-Image modes:
-
-- `contain` preserves aspect ratio and pads with empty cells.
-- `cover` preserves aspect ratio and crops to fill the contribution grid.
-- `stretch` resizes directly to 52 by 7.
-
-The `github-create` command wraps GitHub CLI `gh repo create`. By default it creates a private repository and attaches `repo_dir` as `--source` with remote `origin`:
+5. Check compatibility:
 
 ```bash
-python main.py github-create my-commit-art
-python main.py github-create owner/my-commit-art --public --description "Contribution art"
-python main.py github-create my-commit-art --no-source
-python main.py github-create my-commit-art --push
+python main.py doctor --year 2024
 ```
 
-By default, dates are calculated from the Sunday of the week that was one year ago. Use `--year` to draw into a fixed calendar-year grid. For example, `--year 2024` starts from the Sunday of the week containing January 1, 2024.
+6. Create local commits:
+
+```bash
+python main.py apply --year 2024 --reset-repo
+```
+
+7. Push when the generated repo looks right:
+
+```bash
+python main.py push
+```
+
+## Requirements
+
+- Python 3.11+
+- Git
+- Pillow, used by image import
+- GitHub CLI `gh`, only for `github-create`
+
+Install project dependencies with:
+
+```bash
+python -m pip install -e .
+```
 
 ## Configuration
 
-Edit `config.toml` to change the repository target, branch, generated file, timezone, commit levels, and the 7 by 52 map.
+Main settings live in `config.toml`.
 
 ```toml
 origin = "https://github.com/your-name/commit-art.git"
@@ -109,15 +88,222 @@ author_email = "commit-art@example.com"
 "#" = 20
 ```
 
+Important fields:
+
+- `origin`: GitHub repository URL or remote path.
+- `branch`: branch that will receive generated commits.
+- `repo_dir`: local directory where generated git history is created.
+- `commit_file`: file changed by generated commits.
+- `author_email`: must match a verified email on the target GitHub account.
+- `[levels]`: map symbols and commit counts.
+
 Use another config file with:
 
 ```bash
 python main.py --config my-config.toml preview --year 2024
 ```
 
-## Current Status
+## Map Format
 
-Implemented:
+The contribution map is 7 rows by 52 columns:
+
+- row 1: Sunday
+- row 2: Monday
+- row 3: Tuesday
+- row 4: Wednesday
+- row 5: Thursday
+- row 6: Friday
+- row 7: Saturday
+
+Default symbols:
+
+- space: no commits
+- `.`: low intensity
+- `:`: medium-low intensity
+- `*`: medium-high intensity
+- `#`: high intensity
+
+## Date Modes
+
+Default mode calculates dates from the Sunday of the week that was one year ago:
+
+```bash
+python main.py preview
+```
+
+Fixed-year mode draws into the 52-week grid containing January 1 of the requested year:
+
+```bash
+python main.py preview --year 2024
+```
+
+## Creating Maps
+
+### From Text
+
+```bash
+python main.py text "HELLO"
+python main.py text "2024" --level "*" --align left
+python main.py text "DONE!" --level "#" --letter-spacing 0
+```
+
+Supported characters: `A-Z`, `0-9`, space, `-`, `_`, `!`, `?`, `.`.
+
+The command prints a TOML `map = [...]` block. Paste it into `config.toml`.
+
+### From Image
+
+```bash
+python main.py image assets/logo.png
+python main.py image assets/logo.png --mode stretch
+python main.py image assets/logo.png --mode cover --invert --preview
+```
+
+Dark pixels become higher contribution levels by default. Use `--invert` for light artwork on a dark background.
+
+Image modes:
+
+- `contain`: preserve aspect ratio and pad with empty cells.
+- `cover`: preserve aspect ratio and crop to fill the grid.
+- `stretch`: resize directly to 52 by 7.
+
+Best source images are simple, high-contrast, and close to the 52:7 aspect ratio.
+
+## Preview
+
+List planned active days:
+
+```bash
+python main.py preview --year 2024 --limit 20
+```
+
+Render the contribution graph in the terminal:
+
+```bash
+python main.py preview --year 2024 --visual
+python main.py preview --year 2024 --visual --no-color
+```
+
+`--no-color` is useful in terminals that show ANSI color codes as plain text.
+
+## Validation And Doctor
+
+Validate only the configured map:
+
+```bash
+python main.py validate
+```
+
+Run broader local compatibility checks:
+
+```bash
+python main.py doctor
+python main.py doctor --year 2024
+```
+
+`doctor` checks:
+
+- `git` availability;
+- optional `gh` availability;
+- config placeholders;
+- map validity;
+- `repo_dir` safety;
+- local repo state;
+- branch and origin;
+- dirty working tree;
+- author email shape;
+- local commit count.
+
+It does not call GitHub APIs. GitHub profile settings, verified emails, and default branch settings still need to be checked on GitHub.
+
+## Applying Commits
+
+Create commits locally:
+
+```bash
+python main.py apply --year 2024
+```
+
+Recreate `repo_dir` before applying:
+
+```bash
+python main.py apply --year 2024 --reset-repo
+```
+
+Append to an existing generated repository:
+
+```bash
+python main.py apply --year 2024 --allow-existing
+```
+
+Safety behavior:
+
+- refuses to use the project root as `repo_dir`;
+- refuses paths outside the workspace;
+- refuses non-empty non-git directories;
+- refuses existing git repositories without `--allow-existing`;
+- refuses dirty repositories without `--allow-dirty`;
+- never pushes from `apply`.
+
+Inspect `repo_dir`:
+
+```bash
+python main.py repo-status
+```
+
+## Pushing
+
+Push the generated repository:
+
+```bash
+python main.py push
+```
+
+Force push with lease:
+
+```bash
+python main.py push --force
+```
+
+Push very large histories in batches:
+
+```bash
+python main.py push --chunk-size 500 --chunk-delay 90
+```
+
+`push` refuses dirty repositories unless `--allow-dirty` is passed.
+
+## GitHub Repository Helper
+
+Create a GitHub repository with GitHub CLI:
+
+```bash
+python main.py github-create my-commit-art
+python main.py github-create owner/my-commit-art --public --description "Contribution art"
+python main.py github-create my-commit-art --no-source
+python main.py github-create my-commit-art --push
+```
+
+By default this creates a private repository and attaches `repo_dir` as `gh --source` with remote `origin`.
+
+## Script Generation
+
+Instead of applying commits directly, generate a script:
+
+```bash
+python main.py generate-script --shell powershell
+python main.py generate-script --shell bash
+```
+
+Generated scripts create local commits only. They do not push automatically.
+
+## Testing
+
+```bash
+python -m unittest discover -s tests
+```
+
+## Implemented
 
 - map validation;
 - default rolling-year date calculation;
@@ -129,13 +315,8 @@ Implemented:
 - commit plan preview;
 - visual terminal preview;
 - GitHub contribution compatibility checks with `doctor`;
-- bash and PowerShell script generation.
-- direct local commit creation with `apply`.
-- safe repo workflow with `repo-status`, path guards, dirty checks, and `--reset-repo`.
-- push workflow with dirty checks and `--force-with-lease`.
+- bash and PowerShell script generation;
+- direct local commit creation with `apply`;
+- safe repo workflow with `repo-status`, path guards, dirty checks, and `--reset-repo`;
+- push workflow with dirty checks, `--force-with-lease`, and chunked push;
 - GitHub repository creation helper through `gh`.
-
-Dependencies:
-
-- Python 3.11+
-- Pillow for image import
