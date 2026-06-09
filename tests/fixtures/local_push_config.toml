@@ -1,0 +1,22 @@
+origin = "../local-remote.git"
+branch = "main"
+repo_dir = "local-push-work"
+commit_file = "art.md"
+timezone = "+0000"
+commit_hour = 10
+message_prefix = "Art"
+author_name = "Example User"
+author_email = "example@example.com"
+
+map = [
+  "#                                                   ",
+  "                                                    ",
+  "                                                    ",
+  "                                                    ",
+  "                                                    ",
+  "                                                    ",
+  "                                                    ",
+]
+
+[levels]
+"#" = 1

@@ -1,0 +1,25 @@
+origin = "https://github.com/pavlpicasso/commits_github"
+branch = "master"
+repo_dir = "repo"
+commit_file = "commit_art.md"
+timezone = "+0300"
+commit_hour = 12
+message_prefix = "Commit art"
+author_name = "pavlpicasso"
+author_email = "pavlpicasso@gmail.com"
+
+map = [
+  "           #   # ##### #     #      ###             ",
+  "           #   # #     #     #     #   #            ",
+  "           #   # #     #     #     #   #            ",
+  "           ##### ####  #     #     #   #            ",
+  "           #   # #     #     #     #   #            ",
+  "           #   # #     #     #     #   #            ",
+  "           #   # ##### ##### #####  ###             ",
+]
+
+[levels]
+"." = 4
+":" = 8
+"*" = 12
+"#" = 20

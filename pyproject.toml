@@ -1,0 +1,5 @@
+[project]
+name = "commit-art"
+version = "0.1.0"
+description = "Generate dated commits for GitHub contribution art."
+requires-python = ">=3.11"

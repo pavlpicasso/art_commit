@@ -1,0 +1,22 @@
+origin = "https://github.com/example/art.git"
+branch = "main"
+repo_dir = "out"
+commit_file = "art.md"
+timezone = "+0000"
+commit_hour = 10
+message_prefix = "Art"
+author_name = "Example User"
+author_email = "example@example.com"
+
+map = [
+  "#                                                   ",
+  "                                                    ",
+  "                                                    ",
+  "                                                    ",
+  "                                                    ",
+  "                                                    ",
+  "                                                    ",
+]
+
+[levels]
+"#" = 3
