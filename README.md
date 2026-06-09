@@ -18,6 +18,10 @@ python main.py apply --year 2024
 python main.py apply --year 2024 --reset-repo
 python main.py push
 python main.py push --force
+python main.py push --chunk-size 500
+python main.py push --chunk-size 500 --chunk-delay 90
+python main.py github-create my-commit-art --private
+python main.py github-create owner/my-commit-art --public --description "Contribution art"
 python main.py generate-script --shell powershell
 python main.py generate-script --shell bash
 python -m unittest discover -s tests
@@ -39,11 +43,26 @@ Existing repository options:
 
 The `push` command pushes `repo_dir` to the configured `origin` and `branch`. It refuses to push a dirty repository unless `--allow-dirty` is passed. `--force` uses `--force-with-lease`.
 
+Use `--chunk-size` to publish history progressively in smaller force-pushed batches. This can help GitHub process very large generated histories:
+
+```bash
+python main.py push --chunk-size 500 --chunk-delay 90
+```
+
 The `text` command renders text into a 7 by 52 map that can be pasted into `config.toml`:
 
 ```bash
 python main.py text "HELLO" --level "#"
 python main.py text "2024" --level "*" --align left
+```
+
+The `github-create` command wraps GitHub CLI `gh repo create`. By default it creates a private repository and attaches `repo_dir` as `--source` with remote `origin`:
+
+```bash
+python main.py github-create my-commit-art
+python main.py github-create owner/my-commit-art --public --description "Contribution art"
+python main.py github-create my-commit-art --no-source
+python main.py github-create my-commit-art --push
 ```
 
 By default, dates are calculated from the Sunday of the week that was one year ago. Use `--year` to draw into a fixed calendar-year grid. For example, `--year 2024` starts from the Sunday of the week containing January 1, 2024.
@@ -92,7 +111,8 @@ Implemented:
 - direct local commit creation with `apply`.
 - safe repo workflow with `repo-status`, path guards, dirty checks, and `--reset-repo`.
 - push workflow with dirty checks and `--force-with-lease`.
+- GitHub repository creation helper through `gh`.
 
 Next:
 
-- GitHub repository creation helper.
+- image-to-map importer.

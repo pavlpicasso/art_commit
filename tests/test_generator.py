@@ -1,3 +1,5 @@
+import shutil
+import stat
 import unittest
 from datetime import date
 from pathlib import Path
@@ -8,11 +10,14 @@ from commit_art.git_runner import (
     GitApplyError,
     GitPushError,
     _build_push_args,
+    _build_chunk_push_args,
+    _chunk_end_indexes,
     _ensure_safe_repo_path,
     _prepare_repo_dir,
     inspect_repo,
     push_repo,
 )
+from commit_art.github_helper import GitHubCreateError, _build_github_create_args
 from commit_art.generator import generate_plan, summarize_plan
 from commit_art.map_parser import CommitMapError, validate_commit_map
 from commit_art.preview_renderer import render_visual_map
@@ -105,6 +110,27 @@ class GeneratorTest(unittest.TestCase):
         with self.assertRaises(GitApplyError):
             _prepare_repo_dir(config, allow_existing=False)
 
+    def test_reset_repo_removes_readonly_git_objects(self) -> None:
+        repo_dir = TEST_DIR / "tmp_readonly_reset_repo"
+        object_dir = repo_dir / ".git" / "objects" / "00"
+        object_file = object_dir / "readonly-object"
+
+        if repo_dir.exists():
+            shutil.rmtree(repo_dir)
+        object_dir.mkdir(parents=True)
+        object_file.write_text("object", encoding="utf-8")
+        object_file.chmod(stat.S_IREAD)
+
+        try:
+            _prepare_repo_dir(CommitArtConfig(repo_dir=repo_dir), allow_existing=False, reset_repo=True)
+            self.assertTrue(repo_dir.exists())
+            self.assertEqual(list(repo_dir.iterdir()), [])
+        finally:
+            if object_file.exists():
+                object_file.chmod(stat.S_IREAD | stat.S_IWRITE)
+            if repo_dir.exists():
+                shutil.rmtree(repo_dir)
+
     def test_config_has_author_defaults(self) -> None:
         config = CommitArtConfig()
 
@@ -149,6 +175,19 @@ class GeneratorTest(unittest.TestCase):
 
         self.assertEqual(_build_push_args(config, force=False, set_upstream=False), ["push", "origin", "main"])
 
+    def test_build_chunk_push_args_force_pushes_commit_to_branch(self) -> None:
+        config = CommitArtConfig(branch="master")
+
+        self.assertEqual(
+            _build_chunk_push_args(config, "abc123", set_upstream=True),
+            ["push", "-u", "origin", "abc123:refs/heads/master", "--force"],
+        )
+
+    def test_chunk_end_indexes_include_final_commit(self) -> None:
+        self.assertEqual(_chunk_end_indexes(1460, 500), [499, 999, 1459])
+        self.assertEqual(_chunk_end_indexes(1500, 500), [499, 999, 1499])
+        self.assertEqual(_chunk_end_indexes(1, 500), [0])
+
     def test_render_text_map_returns_7_by_52_map(self) -> None:
         commit_map = render_text_map("HI", level="#")
 
@@ -191,6 +230,45 @@ class GeneratorTest(unittest.TestCase):
         rendered = render_visual_map(commit_map, DEFAULT_LEVELS, color=True)
 
         self.assertIn("\033[", rendered)
+
+    def test_build_github_create_args_uses_private_source_by_default_shape(self) -> None:
+        self.assertEqual(
+            _build_github_create_args(
+                name="owner/commit-art",
+                visibility="private",
+                description="Contribution art",
+                source=Path("repo"),
+                remote="origin",
+                push=True,
+            ),
+            [
+                "repo",
+                "create",
+                "owner/commit-art",
+                "--private",
+                "--description",
+                "Contribution art",
+                "--source",
+                "repo",
+                "--remote",
+                "origin",
+                "--push",
+            ],
+        )
+
+    def test_build_github_create_args_supports_remote_only_creation(self) -> None:
+        self.assertEqual(
+            _build_github_create_args(name="commit-art", visibility="public"),
+            ["repo", "create", "commit-art", "--public"],
+        )
+
+    def test_build_github_create_args_rejects_invalid_visibility(self) -> None:
+        with self.assertRaises(GitHubCreateError):
+            _build_github_create_args(name="commit-art", visibility="secret")
+
+    def test_build_github_create_args_rejects_push_without_source(self) -> None:
+        with self.assertRaises(GitHubCreateError):
+            _build_github_create_args(name="commit-art", visibility="private", push=True)
 
 
 if __name__ == "__main__":

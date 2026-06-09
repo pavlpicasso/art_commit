@@ -5,7 +5,8 @@ from datetime import date
 from pathlib import Path
 
 from commit_art.config import ConfigError, load_config
-from commit_art.git_runner import GitApplyError, GitPushError, apply_plan, inspect_repo, push_repo
+from commit_art.git_runner import GitApplyError, GitPushError, apply_plan, inspect_repo, push_repo, push_repo_in_chunks
+from commit_art.github_helper import GitHubCreateError, create_github_repository
 from commit_art.generator import generate_plan, summarize_plan
 from commit_art.map_parser import CommitMapError, validate_commit_map
 from commit_art.preview_renderer import render_visual_map
@@ -90,12 +91,34 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Do not pass -u/--set-upstream to git push.",
     )
+    push.add_argument(
+        "--chunk-size",
+        type=int,
+        help="Push branch history in chunks of this many commits, using force push for each chunk.",
+    )
+    push.add_argument(
+        "--chunk-delay",
+        type=int,
+        default=90,
+        help="Seconds to wait between chunked pushes. Used only with --chunk-size.",
+    )
 
     text = subparsers.add_parser("text", help="Render text as a 7x52 contribution map.")
     text.add_argument("text", help="Text to render. Supported: A-Z, 0-9, space, - _ ! ? .")
     text.add_argument("--level", default="#", help="Configured intensity symbol to use for filled pixels.")
     text.add_argument("--letter-spacing", type=int, default=1, help="Blank columns between characters.")
     text.add_argument("--align", choices=("left", "center", "right"), default="center")
+
+    github_create = subparsers.add_parser("github-create", help="Create a GitHub repository with gh CLI.")
+    github_create.add_argument("name", help="Repository name, for example owner/repo or repo.")
+    visibility = github_create.add_mutually_exclusive_group()
+    visibility.add_argument("--private", action="store_true", help="Create a private repository. Default.")
+    visibility.add_argument("--public", action="store_true", help="Create a public repository.")
+    visibility.add_argument("--internal", action="store_true", help="Create an internal repository.")
+    github_create.add_argument("--description", help="Repository description.")
+    github_create.add_argument("--no-source", action="store_true", help="Do not attach config repo_dir as gh --source.")
+    github_create.add_argument("--remote", default="origin", help="Remote name to set when using --source.")
+    github_create.add_argument("--push", action="store_true", help="Ask gh to push the source repository after creation.")
 
     return parser
 
@@ -125,11 +148,105 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         config = load_config(args.config)
+    except ConfigError as error:
+        print(f"Error: {error}")
+        return 1
+
+    if args.command == "repo-status":
+        status = inspect_repo(config)
+        print(f"Path: {status.path}")
+        print(f"Exists: {status.exists}")
+        print(f"Directory: {status.is_dir}")
+        print(f"Empty: {status.is_empty}")
+        print(f"Git repository: {status.is_git}")
+        print(f"Dirty: {status.is_dirty}")
+        print(f"Branch: {status.branch or '-'}")
+        print(f"Origin: {status.origin or '-'}")
+        return 0
+
+    if args.command == "push":
+        try:
+            if args.chunk_size is not None:
+                chunks = push_repo_in_chunks(
+                    config,
+                    chunk_size=args.chunk_size,
+                    delay_seconds=args.chunk_delay,
+                    allow_dirty=args.allow_dirty,
+                    set_upstream=not args.no_set_upstream,
+                )
+            else:
+                output = push_repo(
+                    config,
+                    force=args.force,
+                    allow_dirty=args.allow_dirty,
+                    set_upstream=not args.no_set_upstream,
+                )
+        except GitPushError as error:
+            print(f"Error: {error}")
+            return 1
+
+        if args.chunk_size is not None:
+            print(f"Pushed {config.branch} to {config.origin} in {len(chunks)} chunks")
+            for chunk in chunks:
+                print(f"{chunk.commit_count}: {chunk.commit}")
+            return 0
+
+        print(f"Pushed {config.branch} to {config.origin}")
+        if output:
+            print(output)
+        return 0
+
+    if args.command == "text":
+        if args.level not in config.levels:
+            print(f"Error: level {args.level!r} is not configured in [levels].")
+            return 1
+        try:
+            commit_map = render_text_map(
+                args.text,
+                level=args.level,
+                letter_spacing=args.letter_spacing,
+                align=args.align,
+            )
+            validate_commit_map(commit_map, config.levels)
+        except (TextRenderError, CommitMapError) as error:
+            print(f"Error: {error}")
+            return 1
+
+        print(format_toml_map(commit_map))
+        return 0
+
+    if args.command == "github-create":
+        visibility = "private"
+        if args.public:
+            visibility = "public"
+        elif args.internal:
+            visibility = "internal"
+
+        try:
+            output = create_github_repository(
+                config,
+                name=args.name,
+                visibility=visibility,
+                description=args.description,
+                use_source=not args.no_source,
+                remote=args.remote,
+                push=args.push,
+            )
+        except GitHubCreateError as error:
+            print(f"Error: {error}")
+            return 1
+
+        print(f"Created GitHub repository: {args.name}")
+        if output:
+            print(output)
+        return 0
+
+    try:
         today = parse_today(getattr(args, "today", None))
         year = parse_year(getattr(args, "year", None))
         validate_commit_map(config.commit_map, config.levels)
         plan = generate_plan(config.commit_map, config.levels, today=today, year=year)
-    except (CommitMapError, ConfigError, ValueError) as error:
+    except (CommitMapError, ValueError) as error:
         print(f"Error: {error}")
         return 1
 
@@ -165,18 +282,6 @@ def main(argv: list[str] | None = None) -> int:
         print("The script creates local commits only. Push with --force manually after reviewing the target repository.")
         return 0
 
-    if args.command == "repo-status":
-        status = inspect_repo(config)
-        print(f"Path: {status.path}")
-        print(f"Exists: {status.exists}")
-        print(f"Directory: {status.is_dir}")
-        print(f"Empty: {status.is_empty}")
-        print(f"Git repository: {status.is_git}")
-        print(f"Dirty: {status.is_dirty}")
-        print(f"Branch: {status.branch or '-'}")
-        print(f"Origin: {status.origin or '-'}")
-        return 0
-
     if args.command == "apply":
         try:
             total_commits = apply_plan(
@@ -192,42 +297,6 @@ def main(argv: list[str] | None = None) -> int:
 
         print(f"Created {total_commits} commits in {config.repo_dir}")
         print("No push was performed. Review the repository before pushing.")
-        return 0
-
-    if args.command == "push":
-        try:
-            output = push_repo(
-                config,
-                force=args.force,
-                allow_dirty=args.allow_dirty,
-                set_upstream=not args.no_set_upstream,
-            )
-        except GitPushError as error:
-            print(f"Error: {error}")
-            return 1
-
-        print(f"Pushed {config.branch} to {config.origin}")
-        if output:
-            print(output)
-        return 0
-
-    if args.command == "text":
-        if args.level not in config.levels:
-            print(f"Error: level {args.level!r} is not configured in [levels].")
-            return 1
-        try:
-            commit_map = render_text_map(
-                args.text,
-                level=args.level,
-                letter_spacing=args.letter_spacing,
-                align=args.align,
-            )
-            validate_commit_map(commit_map, config.levels)
-        except (TextRenderError, CommitMapError) as error:
-            print(f"Error: {error}")
-            return 1
-
-        print(format_toml_map(commit_map))
         return 0
 
     parser.error(f"Unknown command: {args.command}")

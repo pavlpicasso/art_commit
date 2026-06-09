@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,6 +30,13 @@ class RepoStatus:
     is_dirty: bool
     branch: str | None
     origin: str | None
+
+
+@dataclass(frozen=True)
+class PushChunk:
+    commit_count: int
+    commit: str
+    output: str
 
 
 def apply_plan(
@@ -104,6 +113,69 @@ def push_repo(
     return (result.stdout or result.stderr).strip()
 
 
+def push_repo_in_chunks(
+    config: CommitArtConfig,
+    chunk_size: int,
+    delay_seconds: int = 0,
+    allow_dirty: bool = False,
+    set_upstream: bool = True,
+) -> list[PushChunk]:
+    if chunk_size < 1:
+        raise GitPushError("chunk_size must be greater than 0.")
+    if delay_seconds < 0:
+        raise GitPushError("delay_seconds must not be negative.")
+
+    _ensure_pushable_repo(config, allow_dirty=allow_dirty)
+    try:
+        commits_result = _run_git(config.repo_dir, ["rev-list", "--reverse", "HEAD"], config)
+    except GitApplyError as error:
+        raise GitPushError(str(error)) from error
+    commits = [line for line in commits_result.stdout.splitlines() if line]
+    if not commits:
+        raise GitPushError(f"{config.repo_dir} has no commits to push.")
+
+    chunks: list[PushChunk] = []
+    for index in _chunk_end_indexes(len(commits), chunk_size):
+        commit = commits[index]
+        try:
+            result = _run_git(
+                config.repo_dir,
+                _build_chunk_push_args(config, commit, set_upstream=set_upstream),
+                config,
+            )
+        except GitApplyError as error:
+            raise GitPushError(str(error)) from error
+        chunks.append(PushChunk(commit_count=index + 1, commit=commit, output=(result.stdout or result.stderr).strip()))
+        if delay_seconds and index != len(commits) - 1:
+            time.sleep(delay_seconds)
+
+    return chunks
+
+
+def _ensure_pushable_repo(config: CommitArtConfig, allow_dirty: bool) -> RepoStatus:
+    _ensure_safe_repo_path(config.repo_dir)
+    status = inspect_repo(config)
+
+    if not status.exists:
+        raise GitPushError(f"{config.repo_dir} does not exist. Run apply first.")
+    if not status.is_dir:
+        raise GitPushError(f"{config.repo_dir} is not a directory.")
+    if not status.is_git:
+        raise GitPushError(f"{config.repo_dir} is not a git repository. Run apply first.")
+    if status.is_dirty and not allow_dirty:
+        raise GitPushError(f"{config.repo_dir} has uncommitted changes. Re-run with --allow-dirty if this is intentional.")
+    if not config.origin:
+        raise GitPushError("origin is empty in config.toml.")
+
+    try:
+        if status.origin != config.origin:
+            _set_origin(config.repo_dir, config)
+    except GitApplyError as error:
+        raise GitPushError(str(error)) from error
+
+    return status
+
+
 def _build_push_args(config: CommitArtConfig, force: bool, set_upstream: bool) -> list[str]:
     args = ["push"]
     if set_upstream:
@@ -112,6 +184,22 @@ def _build_push_args(config: CommitArtConfig, force: bool, set_upstream: bool) -
     if force:
         args.append("--force-with-lease")
     return args
+
+
+def _build_chunk_push_args(config: CommitArtConfig, commit: str, set_upstream: bool) -> list[str]:
+    args = ["push"]
+    if set_upstream:
+        args.append("-u")
+    args.extend(["origin", f"{commit}:refs/heads/{config.branch}", "--force"])
+    return args
+
+
+def _chunk_end_indexes(commit_count: int, chunk_size: int) -> list[int]:
+    indexes = list(range(chunk_size - 1, commit_count, chunk_size))
+    final_index = commit_count - 1
+    if not indexes or indexes[-1] != final_index:
+        indexes.append(final_index)
+    return indexes
 
 
 def inspect_repo(config: CommitArtConfig) -> RepoStatus:
@@ -160,7 +248,7 @@ def _prepare_repo_dir(
 
     if reset_repo:
         if repo_dir.exists():
-            shutil.rmtree(repo_dir)
+            _remove_tree(repo_dir)
         _mkdir_repo_dir(repo_dir)
         return
 
@@ -206,6 +294,23 @@ def _mkdir_repo_dir(repo_dir: Path) -> None:
         repo_dir.mkdir(parents=True, exist_ok=False)
     except OSError as error:
         raise GitApplyError(f"Could not create repo_dir {repo_dir}: {error}") from error
+
+
+def _remove_tree(path: Path) -> None:
+    try:
+        shutil.rmtree(path, onexc=_make_writable_and_retry)
+    except OSError as error:
+        raise GitApplyError(f"Could not reset repo_dir {path}: {error}") from error
+
+
+def _make_writable_and_retry(function, path: str, excinfo) -> None:
+    try:
+        os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
+        function(path)
+    except OSError:
+        if isinstance(excinfo, BaseException):
+            raise excinfo
+        raise excinfo[1]
 
 
 def _is_dirty(repo_dir: Path, config: CommitArtConfig) -> bool:
